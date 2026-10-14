@@ -10,8 +10,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import (ModelCallLimitMiddleware, ModelRequest,
-                                         ToolCallLimitMiddleware, dynamic_prompt)
+from langchain.agents.middleware import (ModelCallLimitMiddleware, ModelFallbackMiddleware,
+                                         ModelRequest, ToolCallLimitMiddleware, dynamic_prompt)
 from langchain.tools import ToolRuntime, tool
 from langchain_core.language_models import BaseChatModel
 
@@ -90,7 +90,7 @@ Reglas:
 
 
 def build_agenda_agent(llm: BaseChatModel, agenda: Agenda, ops: PendingOperations,
-                       settings: Settings):
+                       settings: Settings, fallback: BaseChatModel | None = None):
 
     @dynamic_prompt
     def prompt_with_context(request: ModelRequest) -> str:
@@ -223,6 +223,7 @@ def build_agenda_agent(llm: BaseChatModel, agenda: Agenda, ops: PendingOperation
             prompt_with_context,
             ModelCallLimitMiddleware(run_limit=settings.max_model_calls_per_run, exit_behavior="end"),
             ToolCallLimitMiddleware(run_limit=settings.max_tool_calls_per_run),
+            *([ModelFallbackMiddleware(fallback)] if fallback else []),
         ],
         name="subagente_agenda",
     )

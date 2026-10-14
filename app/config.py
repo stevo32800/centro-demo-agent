@@ -7,9 +7,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # --- LLM (Groq) ---
-    groq_api_key: str = ""                      # nunca se registra en los logs
-    groq_model: str = "openai/gpt-oss-120b"
+    # --- LLM (Mistral) ---
+    mistral_api_key: str = ""                   # nunca se registra en los logs
+    mistral_model: str = "ministral-14b-latest"
+    mistral_fallback_model: str = "ministral-8b-latest"   # si el principal falla (p. ej. 429); "" lo desactiva
     llm_temperature: float = 0.0
     llm_timeout_s: float = 30.0                 # timeout de cada llamada al modelo
     llm_max_retries: int = 2                    # reintentar el LLM es seguro 

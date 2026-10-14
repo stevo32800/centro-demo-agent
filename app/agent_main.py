@@ -4,8 +4,8 @@ import uuid
 from dataclasses import dataclass, field
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import (ModelCallLimitMiddleware, ModelRequest,
-                                         ToolCallLimitMiddleware, dynamic_prompt)
+from langchain.agents.middleware import (ModelCallLimitMiddleware, ModelFallbackMiddleware,
+                                         ModelRequest, ToolCallLimitMiddleware, dynamic_prompt)
 from langchain.tools import ToolRuntime, tool
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage
@@ -33,12 +33,14 @@ Responde en español, de forma breve y amable.
 - Si el usuario confirma una operación pendiente, delega: "El usuario CONFIRMA explícitamente la
   operación op_...". Si la rechaza, delega que la descarte.
 - Si el usuario cambia de idea mientras hay una consulta en curso, delega la nueva petición: la
-  anterior se cancela automáticamente. Si pide parar la consulta, usa cancelar_tarea_agenda.
+  anterior se cancela automáticamente. Usa cancelar_tarea_agenda SOLO si el usuario pide
+  explícitamente parar o cancelar la consulta en curso. Si pregunta otra cosa mientras tanto
+  (por ejemplo un horario o un precio), respóndela y deja la consulta seguir: NO la canceles.
 - Los mensajes que empiezan por "[Resultado de la tarea" ya se mostraron al usuario: úsalos como contexto."""
 
 
 def build_main_agent(llm: BaseChatModel, kb: BusinessKB, tasks: TaskManager, agenda: Agenda,
-                     agenda_agent, settings: Settings):
+                     agenda_agent, settings: Settings, fallback: BaseChatModel | None = None):
 
     @dynamic_prompt
     def prompt_with_date(request: ModelRequest) -> str:
@@ -91,6 +93,7 @@ def build_main_agent(llm: BaseChatModel, kb: BusinessKB, tasks: TaskManager, age
             prompt_with_date,
             ModelCallLimitMiddleware(run_limit=settings.max_model_calls_per_run, exit_behavior="end"),
             ToolCallLimitMiddleware(run_limit=settings.max_tool_calls_per_run),
+            *([ModelFallbackMiddleware(fallback)] if fallback else []),
         ],
         name="agente_principal",
     )

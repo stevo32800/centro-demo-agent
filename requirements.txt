@@ -1,7 +1,7 @@
 # Agentes
 langchain>=1.4,<2
 langgraph>=1.2,<2
-langchain-groq>=1.1,<2
+langchain-mistralai>=1.1,<2
 # API
 fastapi>=0.115
 uvicorn[standard]>=0.30

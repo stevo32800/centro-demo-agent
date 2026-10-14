@@ -18,7 +18,7 @@ DELAY = 1.0                                   # 15 s en producción; 1 s en test
 @asynccontextmanager
 async def client(tmp_path, **overrides):
     settings = Settings(db_path=str(tmp_path / "api.db"), availability_delay_s=DELAY,
-                        groq_api_key="", **overrides)
+                        mistral_api_key="", **overrides)
     app = create_app(settings, llm_main=make_rules_model(main_rules),
                      llm_agenda=make_rules_model(agenda_rules), now_fn=lambda: FIXED_NOW)
     async with app.router.lifespan_context(app):

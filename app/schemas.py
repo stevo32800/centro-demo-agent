@@ -1,9 +1,13 @@
 """Contratos: API HTTP, contexto de ejecución y entradas de las herramientas."""
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, WithJsonSchema
+
+# El JSON Schema se anuncia como string simple: con format=date-time, el proveedor puede rechazar (400)
+# la hora local sin segundos ni zona que pedimos al modelo. Pydantic sigue parseándola a datetime.
+LocalDateTime = Annotated[datetime, WithJsonSchema({"type": "string"})]
 
 
 # ----------------------------------------------------------------- API HTTP
@@ -69,12 +73,12 @@ class FechaInput(BaseModel):
 
 
 class PrepararReservaInput(BaseModel):
-    inicio: datetime = Field(..., description="Inicio de la cita, YYYY-MM-DDTHH:MM, hora de Guayaquil.")
+    inicio: LocalDateTime = Field(..., description="Inicio de la cita, YYYY-MM-DDTHH:MM, hora de Guayaquil.")
 
 
 class PrepararReprogramacionInput(BaseModel):
     cita_id: str = Field(..., description="Identificador de la cita actual (c_...).")
-    nuevo_inicio: datetime = Field(..., description="Nuevo inicio, YYYY-MM-DDTHH:MM, hora de Guayaquil.")
+    nuevo_inicio: LocalDateTime = Field(..., description="Nuevo inicio, YYYY-MM-DDTHH:MM, hora de Guayaquil.")
 
 
 class CitaIdInput(BaseModel):

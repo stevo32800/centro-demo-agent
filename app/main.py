@@ -28,12 +28,14 @@ def create_app(settings: Settings | None = None, llm_main=None, llm_agenda=None,
         ops = PendingOperations()
         main_llm = llm_main or build_llm(settings)
         agenda_llm = llm_agenda or main_llm
-        agenda_agent = build_agenda_agent(agenda_llm, agenda, ops, settings)
+        fallback = (build_llm(settings, settings.mistral_fallback_model)
+                    if llm_main is None and settings.mistral_fallback_model else None)
+        agenda_agent = build_agenda_agent(agenda_llm, agenda, ops, settings, fallback)
         main_agent = build_main_agent(main_llm, BusinessKB(settings.docs_dir), tasks, agenda,
-                                      agenda_agent, settings)
+                                      agenda_agent, settings, fallback)
         app.state.agenda, app.state.tasks = agenda, tasks
         app.state.chat = ChatService(main_agent, tasks)
-        log_event("startup", model=settings.groq_model, db=settings.db_path)
+        log_event("startup", model=settings.mistral_model, db=settings.db_path)
         yield
         for task in tasks.running_for_all():
             tasks.cancel(task.id, reason="apagado del servidor")
@@ -50,7 +52,7 @@ def create_app(settings: Settings | None = None, llm_main=None, llm_agenda=None,
     # ----------------------------------------------------------- endpoints
     @app.get("/health")
     async def health(request: Request):
-        return {"status": "ok", "model": settings.groq_model,
+        return {"status": "ok", "model": settings.mistral_model,
                 "running_tasks": request.app.state.tasks.running_count()}
 
     @app.post("/chat", response_model=ChatResponse)
