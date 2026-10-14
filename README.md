@@ -1,8 +1,8 @@
 # Centro Demo — agente conversacional con subagente de agenda
 
-Prototipo de la prueba técnica *AI Tech Lead*: un agente principal (FastAPI + LangChain + Mistral) que
-responde sobre el negocio con RAG (BM25) y delega la agenda a un subagente que trabaja **en segundo
-plano**, de modo que la conversación sigue disponible durante la consulta lenta (15 s).
+Prototipo para la prueba técnica *AI Tech Lead*. Un agente principal (FastAPI + LangChain + Mistral)
+responde sobre el negocio con RAG (BM25) y delega la agenda a un subagente que trabaja en segundo plano,
+así la conversación sigue disponible mientras dura la consulta lenta de 15 s.
 
 ## Arranque rápido
 

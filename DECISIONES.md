@@ -30,34 +30,41 @@ cancela la anterior (su resultado ya no es vigente). Un resultado que llegue tra
 descarta.
 
 ## Por qué así
-- **LangChain `create_agent` + LangGraph**: bucle de herramientas, memoria (`InMemorySaver`),
-  contexto inyectado (`ToolRuntime`) y límites de pasos (middlewares) sin reinventarlos.
-- **Segundo plano con `asyncio.create_task`** y no con Celery/colas: un solo proceso, sin
-  infraestructura extra; suficiente para el prototipo.
-- **Polling** y no WebSocket: lo más fácil de demostrar con un script y de depurar con `curl`.
-- **Subagente sin estado**: cada tarea es "instrucción → resultado". Evita que una tarea cancelada
-  deje la memoria del subagente en un estado inconsistente.
-- **Confirmación en código** y no `HumanInTheLoopMiddleware`: la interrupción ocurriría dentro de una
-  tarea en segundo plano y reanudarla complicaría el flujo.
-- **BM25** y no embeddings: 5 documentos pequeños; sin modelo que descargar ni otra API.
-- **Sin reintentos en herramientas de escritura**; sí en las llamadas al LLM (no tienen efectos).
+Usé LangChain `create_agent` con LangGraph porque ya traen el bucle de herramientas, la memoria
+(`InMemorySaver`), el contexto inyectado (`ToolRuntime`) y los límites de pasos (middlewares); no quería
+reescribir eso.
+
+La consulta lenta corre con `asyncio.create_task` y no con Celery o una cola: en este prototipo basta un
+solo proceso y me ahorro infraestructura. Para entregar el resultado elegí polling en vez de WebSocket,
+porque es lo más fácil de demostrar con un script y de depurar con `curl`.
+
+El subagente no guarda estado: cada tarea es "instrucción → resultado". Así una tarea cancelada no deja su
+memoria a medias. La confirmación la controlo en código y no con `HumanInTheLoopMiddleware`, porque la
+interrupción ocurriría dentro de una tarea en segundo plano y reanudarla complicaría el flujo.
+
+Para el negocio uso BM25 en lugar de embeddings: son 5 documentos pequeños y así no hace falta otro
+modelo ni otra API. Las herramientas de escritura no se reintentan; las llamadas al LLM sí, porque no tienen
+efectos secundarios.
 
 ## Por qué Mistral
-- **Gratis y con cuota generosa en modelos pequeños**: en el plan gratuito, `ministral-14b-latest`
-  admite 30 peticiones/min y ~900 000 tokens/min, y `ministral-8b-latest` 188 peticiones/min
-  (cifras leídas en las cabeceras `x-ratelimit-*`). Para un PoC como este sobra: cada ejecución de
-  los casos de evaluación hace unas 25 llamadas de ~1 000 tokens.
-- **Punto de partida: Groq** (`openai/gpt-oss-120b`, plan gratuito). Es muy potente, pero limita a 8 000
-  tokens/min y las evaluaciones fallaban con errores 429 (con Groq solo pasaban 2 de 6 casos). Cambiar de
-  proveedor fue barato porque el modelo está aislado en `app/llm.py`.
-- **Respaldo**: si el modelo principal falla (p. ej. 429), se reintenta con `ministral-8b-latest`
-  (`MISTRAL_FALLBACK_MODEL`; vacío lo desactiva). Cada modelo tiene su propia cuota.
-- Un modelo pequeño es menos fiable que uno grande: por eso las evaluaciones comprueban el estado real de
-  la agenda y no solo el texto.
-- **En producción apuntaríamos a modelos más grandes** (p. ej. `mistral-medium` o equivalente) para fiabilizar
-  la selección de herramientas. Ya lo vimos: `ministral-14b` llegó a cancelar una consulta en curso cuando
-  el usuario solo hacía otra pregunta; se corrigió con el prompt, pero un modelo mayor lo evitaría de raíz.
-  Cambiarlo es solo `MISTRAL_MODEL`; las evaluaciones sirven para validar el cambio.
+Empecé con Groq (`openai/gpt-oss-120b`, plan gratuito). Es un modelo potente, pero el plan gratuito limita a
+8 000 tokens por minuto y las evaluaciones fallaban con errores 429 (solo pasaban 2 de 6 casos). Cambiar de
+proveedor fue barato porque el modelo está aislado en `app/llm.py`.
+
+Me quedé con Mistral porque es gratis y da una cuota generosa en modelos pequeños. En mi cuenta, según las
+cabeceras `x-ratelimit-*`, `ministral-14b-latest` admite 30 peticiones por minuto y unos 900 000 tokens por
+minuto, y `ministral-8b-latest` 188 peticiones por minuto. Para un PoC como este sobra: cada ejecución de
+las evaluaciones hace unas 25 llamadas de unos 1 000 tokens.
+
+Si el modelo principal falla (por ejemplo con un 429), la llamada se repite con `ministral-8b-latest`
+(`MISTRAL_FALLBACK_MODEL`; vacío lo desactiva). Cada modelo tiene su propia cuota.
+
+Un modelo pequeño es menos fiable que uno grande, y por eso las evaluaciones comprueban el estado real de la
+agenda y no solo el texto. En producción apuntaría a modelos más grandes (por ejemplo `mistral-medium` o
+equivalente) para que la selección de herramientas sea más fiable. Ya lo vi: `ministral-14b` llegó a
+cancelar una consulta en curso cuando el usuario solo hacía otra pregunta. Lo corregí con el prompt, pero un
+modelo mayor lo evitaría de raíz. Cambiarlo es solo `MISTRAL_MODEL`, y las evaluaciones sirven para validar
+el cambio.
 
 ## ¿Cuándo bastaría un solo agente?
 Si no existiera la consulta lenta y las herramientas fueran rápidas, un único agente con todas las
@@ -75,10 +82,10 @@ Evaluaciones con LLM real (`python -m evals.run_evals`), 13/10/2026:
 | Mistral `ministral-14b` + respaldo `ministral-8b`, prompt corregido | **6/6** (un solo run) | — |
 
 Fallos conocidos:
-- Con modelos pequeños el resultado varía entre ejecuciones; 6/6 es una observación, no una garantía.
-- `langchain-mistralai` no reintenta errores HTTP como el 429; por eso existe el modelo de respaldo.
-- `peticion_ambigua` exigía un `?` en la respuesta; se cambió el criterio porque la respuesta era correcta sin él.
-- Las pruebas con modelos falsos (`pytest`) no detectan estos problemas de selección de herramientas; solo las evaluaciones con LLM real.
+- Con modelos pequeños el resultado varía entre ejecuciones: el 6/6 es una observación, no una garantía.
+- `langchain-mistralai` no reintenta errores HTTP como el 429, y por eso añadí el modelo de respaldo.
+- `peticion_ambigua` exigía un `?` en la respuesta. Cambié el criterio porque la respuesta era correcta sin él.
+- Las pruebas con modelos falsos (`pytest`) no detectan problemas de selección de herramientas; solo lo hacen las evaluaciones con LLM real.
 
 ## Limitaciones conocidas
 - Estado en memoria: un reinicio pierde conversaciones, tareas, eventos y operaciones pendientes.
@@ -109,9 +116,9 @@ Fallos conocidos:
 - Plataforma: Docker/CI, observabilidad, despliegue.
 
 ## Tiempo y uso de IA
-Tiempo total: unas 6 horas.
+Dediqué unas 6 horas en total.
 
-Usé Claude Code como asistente de programación, sobre todo para detectar y corregir fallos: diagnosticó
-los errores 429 y `tool_use_failed` a partir de los logs, corrigió el esquema de fecha de las herramientas,
-ayudó a migrar de proveedor y ajustó el prompt que provocaba cancelaciones indebidas. Cada cambio se validó
-ejecutando las pruebas (`pytest`) y las evaluaciones con LLM real.
+Usé Claude Code como asistente de programación, sobre todo para detectar y corregir fallos. Me ayudó a
+diagnosticar los errores 429 y `tool_use_failed` a partir de los logs, a corregir el esquema de fecha de las
+herramientas, a migrar de proveedor y a ajustar el prompt que provocaba cancelaciones indebidas. Cada cambio
+lo validé ejecutando `pytest` y las evaluaciones con LLM real.
