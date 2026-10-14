@@ -2,7 +2,7 @@
 mientras el subagente consulta la agenda (15 s).
 
 Requiere el servidor en marcha (uvicorn o Docker).  Uso:
-    python scripts/demo.py [--url http://localhost:8000] [--user ana]
+    python scripts/demo.py [--url http://127.0.0.1:8000] [--user ana]
 """
 import argparse
 import time
@@ -26,7 +26,7 @@ def next_business_day(today: date) -> date:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", default="http://localhost:8000")
+    parser.add_argument("--url", default="http://127.0.0.1:8000")
     parser.add_argument("--user", default="ana")
     args = parser.parse_args()
     headers = {"X-User-Id": args.user}

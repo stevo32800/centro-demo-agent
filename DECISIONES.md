@@ -95,30 +95,40 @@ Fallos conocidos:
 - La calidad de las respuestas depende del modelo; los casos de evaluación lo miden.
 
 ## Antes de producción
-1. Estado en Redis/Postgres (tareas, eventos, operaciones pendientes, checkpointer de LangGraph).
-2. Cola de trabajos (Arq, Celery, Temporal) con reanudación tras reinicios.
-3. Autenticación real (JWT/OAuth) que sustituya `X-User-Id`.
-4. SSE/WebSocket para notificar resultados sin polling.
-5. Confirmación por endpoint explícito además del lenguaje natural.
-6. Modelo de mayor tamaño de pago (mejor selección de herramientas y menos límites de cuota) y pasar de nuevo
-   las evaluaciones.
+Lo primero que cambiaría, por orden de prioridad:
+1. Guardar el estado fuera de la memoria del proceso (base de datos), para no perder conversaciones ni
+   tareas al reiniciar.
+2. Usar una cola para las tareas largas, de modo que se puedan retomar si el servidor se cae.
+3. Poner una autenticación real en lugar del `X-User-Id` simulado.
+4. Añadir un endpoint de confirmación explícito (human-in-the-loop real: una interfaz lo llamaría con un
+   botón), en vez de depender de que el modelo entienda el "sí".
+5. Usar un modelo más grande y de pago, y volver a pasar las evaluaciones.
+6. Avisar al usuario cuando el resultado esté listo, sin que el cliente tenga que consultar cada pocos
+   segundos.
+7. Responder sin llamar al modelo a los casos evidentes (un "sí" o "no" corto, o una pregunta frecuente)
+   para ahorrar coste y latencia, y dejar el LLM para el resto.
 
 ## Observabilidad
-- **Errores**: logs JSON con `conversation_id`, `task_id`, `tool`, `duration_ms`, `outcome` →
-  agregarlos (Loki/ELK) y alertar por tasa de `task_failed` / `timeout`.
-- **Latencia**: p50/p95 de `agent_turn` y de cada herramienta; trazas con LangSmith u OpenTelemetry.
-- **Coste**: tokens por turno (metadatos de uso de Mistral) × precio del modelo; límites de pasos ya
+- **Errores**: los logs ya son JSON e incluyen la conversación, la tarea, la herramienta, la duración y el
+  resultado. Los enviaría a Loki y los vería en Grafana, con una alerta si suben las tareas fallidas o con
+  timeout.
+- **Latencia**: mediría cuánto tarda cada turno del agente y cada herramienta, mirando el caso típico y
+  también los más lentos, en un panel de Grafana.
+- **Coste**: tokens usados por turno multiplicados por el precio del modelo. Los límites de pasos ya
   acotan el peor caso.
+- **Seguimiento del agente**: para ver qué hizo el modelo en cada paso (prompts, herramientas elegidas)
+  usaría LangSmith, que se integra con LangChain.
 
 ## Reparto en un equipo pequeño
-- Backend: persistencia, cola, autenticación.
-- IA: prompts, herramientas, conjunto de evaluación y regresiones.
-- Plataforma: Docker/CI, observabilidad, despliegue.
+Con tres personas lo repartiría así:
+- Una persona de backend: base de datos, cola de tareas y autenticación.
+- Una persona de IA: prompts, herramientas y evaluaciones, para detectar cuando un cambio de modelo
+  empeora algo.
+- Una persona de plataforma: Docker, despliegue y monitorización.
+
+Empezaría por el estado en base de datos y las evaluaciones, porque lo demás se apoya en eso.
 
 ## Tiempo y uso de IA
 Dediqué unas 6 horas en total.
 
-Usé Claude Code como asistente de programación, sobre todo para detectar y corregir fallos. Me ayudó a
-diagnosticar los errores 429 y `tool_use_failed` a partir de los logs, a corregir el esquema de fecha de las
-herramientas, a migrar de proveedor y a ajustar el prompt que provocaba cancelaciones indebidas. Cada cambio
-lo validé ejecutando `pytest` y las evaluaciones con LLM real.
+Usé Claude Code como ayuda para programar, para elegir las herramientas y para depurar.
